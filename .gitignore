@@ -1,0 +1,20 @@
+# Virtual environments
+venv/
+env/
+
+# Data
+data/
+*.csv
+*.parquet
+
+# Python
+__pycache__/
+*.pyc
+
+# MLflow and Models
+mlruns/
+mlflow.db
+*.pkl
+
+# Environment variables
+.env
