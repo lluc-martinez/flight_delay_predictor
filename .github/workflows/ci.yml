@@ -1,0 +1,36 @@
+name: CI Pipeline
+
+# 1. ¿Cuándo se ejecuta esto? Cada vez que hagamos un push a la rama principal.
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  test-api:
+    name: Run Pytest
+    runs-on: ubuntu-latest # Ejecuta los tests en un servidor Linux gratuito de GitHub
+
+    steps:
+    # 2. Descarga tu código al servidor de GitHub
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    # 3. Instala Python 3.12
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+
+    # 4. Instala tus dependencias y las de testing
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest httpx2
+
+    # 5. Ejecuta los tests
+    - name: Run Pytest
+      run: |
+        pytest -v

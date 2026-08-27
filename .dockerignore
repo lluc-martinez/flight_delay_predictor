@@ -1,0 +1,14 @@
+# Virtual environments
+venv/
+env/
+
+# Data (Raw and processed)
+data/
+
+# Local databases we don't want in production
+audit_logs.db
+
+# Python cache
+__pycache__/
+*.pyc
+.pytest_cache/

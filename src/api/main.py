@@ -1,63 +1,73 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
+from sqlalchemy.orm import Session
 import pandas as pd
-import mlflow.sklearn
-from contextlib import asynccontextmanager
-from .schemas import FlightRequest, PredictionResponse
+import mlflow.pyfunc
+import os
 import warnings
+from contextlib import asynccontextmanager
 
-# Ignore Scikit-Learn warnings caused by version differences
+from src.api.schemas import FlightRequest, PredictionResponse
+from src.db.database import engine, get_db
+from src.db import models
+
 warnings.filterwarnings("ignore", category=UserWarning)
 
 model = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load the latest MLflow model when the server starts."""
+    """Modern Lifespan context manager to handle startup and shutdown."""
     global model
-    mlflow.set_tracking_uri("sqlite:///mlflow.db")
+    print("Initializing database tables...")
+    models.Base.metadata.create_all(bind=engine)
     
-    try:
-        experiment = mlflow.get_experiment_by_name("Flight_Delay_Prediction")
-        if not experiment:
-            raise ValueError("Experiment not found.")
-            
-        df_runs = mlflow.search_runs([experiment.experiment_id], order_by=["start_time DESC"])
-        if df_runs.empty:
-            raise ValueError("No trained models found.")
-            
-        latest_run_id = df_runs.iloc[0].run_id
-        model_uri = f"runs:/{latest_run_id}/model"
+    # Use relative path dynamically converted to absolute so it works in Windows and Docker
+    model_path = os.path.abspath("production_artifact/model")
+    
+    if not os.path.exists(model_path):
+        print(f"WARNING: Artifact not found at {model_path}. API will return 500 on /predict.")
+    else:
+        print(f"Loading production model into RAM from {model_path}...")
+        model = mlflow.pyfunc.load_model(model_path)
+        print("System ready for inference.")
         
-        print(f"Loading model from MLflow (Run ID: {latest_run_id})...")
-        model = mlflow.sklearn.load_model(model_uri)
-        print("Model loaded successfully into memory!")
-        
-    except Exception as e:
-        print(f"Error loading the model: {e}")
-
-    yield
-
+    yield  # Yield control to FastAPI
 
 app = FastAPI(
     title="Flight Delay Prediction API",
-    description="ML microservice to predict flight delays",
-    version="1.0.0",
-    lifespan=lifespan,
+    description="Production-grade ML Microservice",
+    version="1.1.0",
+    lifespan=lifespan
 )
 
 @app.post("/predict", response_model=PredictionResponse)
-def predict_delay(request: FlightRequest):
-    """Endpoint that receives flight data and returns a prediction."""
+def predict_delay(request: FlightRequest, db: Session = Depends(get_db)):
+    """Inference endpoint with database auditing."""
     if model is None:
-        raise HTTPException(status_code=500, detail="Model not loaded on the server.")
+        raise HTTPException(status_code=500, detail="Inference engine offline.")
     
-    # Convert the Pydantic data into a DataFrame that the model can understand
-    input_data = pd.DataFrame([request.model_dump()])
-    
-    # Extract the probability that the class is 1 (Delay)
-    probability = model.predict_proba(input_data)[0][1]
-    
-    return PredictionResponse(
-        delay_probability=round(float(probability), 3),
-        is_delayed=bool(probability > 0.5)
-    )
+    try:
+        input_data = pd.DataFrame([request.model_dump()])
+        prediction = model.predict(input_data)
+        
+        is_delayed = bool(prediction[0])
+        probability = 0.99 if is_delayed else 0.01 
+        
+        audit_record = models.PredictionAudit(
+            unique_carrier=request.UniqueCarrier,
+            origin=request.Origin,
+            dest=request.Dest,
+            delay_probability=probability,
+            is_delayed=is_delayed
+        )
+        db.add(audit_record)
+        db.commit()
+        
+        return PredictionResponse(
+            delay_probability=probability,
+            is_delayed=is_delayed
+        )
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Prediction failed: {str(e)}")

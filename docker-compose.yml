@@ -1,0 +1,33 @@
+services:
+  # --- 1. The Database Service ---
+  db:
+    image: postgres:15-alpine
+    container_name: flight_postgres_db
+    restart: always
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: securepassword123
+      POSTGRES_DB: flight_delays
+    ports:
+      - "5432:5432"
+    volumes:
+      # This ensures database data survives even if the container is destroyed
+      - postgres_data:/var/lib/postgresql/data
+
+  # --- 2. The API Service ---
+  api:
+    build: .
+    container_name: flight_prediction_api
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      # We overwrite the local SQLite URL with the real PostgreSQL connection string
+      # Format: postgresql://user:password@host:port/database_name
+      - DATABASE_URL=postgresql://admin:securepassword123@db:5432/flight_delays
+    depends_on:
+      - db
+
+# Define the persistent volume for the database
+volumes:
+  postgres_data:
