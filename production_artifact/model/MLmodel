@@ -1,0 +1,23 @@
+artifact_path: file:C:/Users/lluc0/Documents/My projects/flight_delay_predictor/mlruns/1/models/m-b433f9593a724677a2c729c527031383/artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.skops
+    predict_fn: predict
+    python_version: 3.13.5
+  sklearn:
+    code: null
+    pickled_model: model.skops
+    serialization_format: skops
+    sklearn_version: 1.9.0
+    skops_trusted_types: null
+mlflow_version: 3.15.1
+model_id: m-b433f9593a724677a2c729c527031383
+model_size_bytes: 10176442
+model_uuid: m-b433f9593a724677a2c729c527031383
+prompts: null
+run_id: 2021f697e5054829a4ff6a03ed731b9d
+utc_time_created: '2026-08-07 20:40:20.492553'
