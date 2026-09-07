@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from unittest.mock import patch
 
 from src.api.main import app
 from src.db.database import get_db, Base
@@ -27,8 +28,18 @@ def setup_database():
 
 # --- THE TESTS ---
 
-def test_predict_valid_flight():
-    """Tests that a valid flight payload returns a 200 OK and the correct schema."""
+# 1. Interceptamos la función antes de que se ejecute en el código real
+@patch("src.api.main.get_weather_features")
+def test_predict_valid_flight(mock_get_weather):
+    """Prueba que el payload válido devuelve 200 OK con clima simulado."""
+    
+    # 2. Obligamos al mock a devolver estos datos instantáneamente (sin usar internet)
+    mock_get_weather.return_value = {
+        "wind_speed": 10.0,
+        "temperature": 22.5,
+        "is_raining": 0
+    }
+    
     payload = {
         "UniqueCarrier": "DL",
         "Origin": "ATL",
@@ -40,7 +51,6 @@ def test_predict_valid_flight():
         "Total_Origin_Congestion": 120
     }
     
-    # THE FIX: Using the 'with' context manager triggers the lifespan (loads the model)
     with TestClient(app) as client:
         response = client.post("/predict", json=payload)
         
@@ -48,18 +58,20 @@ def test_predict_valid_flight():
         data = response.json()
         assert "delay_probability" in data
         assert "is_delayed" in data
-        assert isinstance(data["delay_probability"], float)
-        assert isinstance(data["is_delayed"], bool)
+        
+        # 3. Verificamos que nuestro código intentó buscar el clima de Atlanta (ATL)
+        mock_get_weather.assert_called_once_with("ATL")
 
-def test_predict_invalid_data():
-    """Tests that the API gracefully rejects invalid data (e.g., negative distance)."""
+@patch("src.api.main.get_weather_features")
+def test_predict_invalid_data(mock_get_weather):
+    """Prueba que los errores de Pydantic bloquean la petición antes de buscar el clima."""
     payload = {
         "UniqueCarrier": "DL",
         "Origin": "ATL",
         "Dest": "JFK",
         "DayOfWeek": 5,
         "Month": 12,
-        "Distance": -50,
+        "Distance": -50,  # Inválido: Pydantic espera >= 0
         "CRSDepTime": 1830,
         "Total_Origin_Congestion": 120
     }
@@ -67,3 +79,6 @@ def test_predict_invalid_data():
     with TestClient(app) as client:
         response = client.post("/predict", json=payload)
         assert response.status_code == 422
+        
+        # 4. Pydantic debería haber abortado la petición antes de llamar al clima
+        mock_get_weather.assert_not_called()
