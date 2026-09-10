@@ -21,6 +21,8 @@ services:
     restart: always
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
       # We overwrite the local SQLite URL with the real PostgreSQL connection string
       # Format: postgresql://user:password@host:port/database_name
